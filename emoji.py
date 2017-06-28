@@ -21,6 +21,8 @@ class Emoji(object):
         im = Image.open(image)
         if im.size != (20, 20):
             im.thumbnail((20, 20))
+        if args.transparency:
+            return im.convert("RGBA")
         alpha = im.convert('RGBA').split()[-1]
         bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
         bg.paste(im, mask=alpha)
@@ -43,13 +45,16 @@ class Emoji(object):
 
 
 class Picture(object):
-    def __init__(self, image, max_size):
-        self.image = self._process_image(image, max_size)
+    def __init__(self, image, max_size, keeptransparency=False):
+        self.image = self._process_image(image, max_size, keeptransparency)
         self.width, self.height = self.image.size
         self.canvas_size = (self.image.width * 20, self.image.height * 20)
-        self.canvas = Image.new("RGB", self.canvas_size, color=(255, 255, 255))
+        if keeptransparency:
+            self.canvas = Image.new("RGBA", self.canvas_size, color=(255, 255, 255, 0))
+        else:
+            self.canvas = Image.new("RGB", self.canvas_size, color=(255, 255, 255))
 
-    def _process_image(self, image, max_size):
+    def _process_image(self, image, max_size, keeptransparency):
         im = Image.open(image)
         # Remove PNG transparency: https://stackoverflow.com/a/35859141
         if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
@@ -59,6 +64,8 @@ class Picture(object):
             im = bg
         # Resize the input image keeping the aspect ratio correct
         im.thumbnail((max_size, max_size), resample=Image.LANCZOS)
+        if keeptransparency:
+            return im
         return im.convert("RGB")
 
     def paste_emoji(self, pos, emoji):
@@ -82,6 +89,10 @@ if __name__ == "__main__":
     args.add_argument("image",
                       help="Input image to process.")
 
+    args.add_argument("--transparency", "-t",
+                      action="store_true",
+                      help="Keep the transparency layer in the input image.")
+
     args.add_argument("--emoji", "-e",
                       help="Directory to retrieve emoji from.",
                       default="emoji")
@@ -100,7 +111,7 @@ if __name__ == "__main__":
     emoji = [Emoji(os.path.join(args.emoji, x)) for x in
         filter(lambda x: "png" in x, os.listdir(args.emoji))]
 
-    image = Picture(args.image, args.size)
+    image = Picture(args.image, args.size, keeptransparency=args.transparency)
 
     print("Creating {}x{} image from {}x{} image and {} emoji:".format(
         image.width * 20, image.height * 20, image.width, image.height,
@@ -111,7 +122,10 @@ if __name__ == "__main__":
     for y in tqdm(range(image.height), unit="rows"):
         for x in range(image.width):
             colour = image.get_pixel((x, y))
-            if colour == (255, 255, 255):
+            if args.transparency and colour[-1] >= 240 and\
+                colour[0] >= 240 and colour[1] >= 240 and colour[2] >= 240:
+                continue
+            elif not args.transparency and colour == (255, 255, 255):
                 continue
             try:
                 out_emoji = previous_chars[colour]
