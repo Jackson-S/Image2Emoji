@@ -6,6 +6,7 @@
 
 import os
 import re
+import sys
 import struct
 import platform
 import argparse
@@ -96,7 +97,11 @@ class Emoji(object):
     def _process_emoji(self, size, transp):
         im = Image.open(self.name)
         if im.size != (size, size):
-            im = im.resize((size, size), resample=Image.LANCZOS)
+            try:
+                filter_algorithm = Image.LANCZOS
+            except AttributeError:
+                filter_algorithm = Image.BICUBIC
+            im = im.resize((size, size), resample=filter_algorithm)
         alpha = im.convert('RGBA').split()[-1]
         bg = Image.new("RGBA", im.size, (255, 255, 255, 0))
         bg.paste(im, mask=alpha)
@@ -108,7 +113,11 @@ class Emoji(object):
         image = Image.open(self.name)
         background = Image.new("RGBA", image.size, (255, 255, 255, 255))
         background.paste(image, mask=image.convert('RGBA').split()[-1])
-        background = background.resize((1, 1), resample=Image.LANCZOS)
+        try:
+            filter_algorithm = Image.LANCZOS
+        except AttributeError:
+            filter_algorithm = Image.BICUBIC
+        background = background.resize((1, 1), resample=filter_algorithm)
         colour = background.getpixel((0, 0))
         background.close()
         image.close()
@@ -142,7 +151,11 @@ class Picture(object):
             bg.paste(im, mask=alpha)
             im = bg
         # Resize the input image keeping the aspect ratio correct
-        im.thumbnail((max_size, max_size), resample=Image.LANCZOS)
+        try:
+            filter_algorithm = Image.LANCZOS
+        except AttributeError:
+            filter_algorithm = Image.BICUBIC
+        im.thumbnail((max_size, max_size), resample=filter_algorithm)
         return im
 
     def paste_emoji(self, pos, emoji):
