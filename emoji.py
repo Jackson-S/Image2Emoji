@@ -13,44 +13,29 @@ from tqdm import tqdm
 
 
 class EmojiExtractor(object):
-    """Finds PNG images in Apple Color Emoji.tt(c/f) and extracts them"""
-    def __init__(self):
-        self.font = self._read_in_font()
+    """Finds PNG images in Apple Color Emoji.tt(c|f) and extracts them"""
+    def __init__(self, location=None):
+        self.font = self._read_in_font(location)
 
-    def _read_in_font(self):
-        font_path = "/System/Library/Fonts/"
-        font_name = ("Apple Color Emoji.ttf", "Apple Color Emoji.ttc")
+    def _read_in_font(self, location=None):
+        """ Private method to read font file as binary data. """
+        # If a user font location is specified then read in that font
+        if location is not None:
+            if not os.path.exists(location):
+                raise FileNotFoundError("{} not found!".format(location))
+
+            with open(location, "rb") as font_file:
+                return font_file.read()
 
         # Get the path to the font file, OSX 10.12 changed to .ttc from .ttf
+        font_path = "/System/Library/Fonts/"
+        font_name = ("Apple Color Emoji.ttf", "Apple Color Emoji.ttc")
         for name in font_name:
             if os.path.exists(os.path.join(font_path, name)):
                 with open(os.path.join(font_path, name), "rb") as font_file:
                     return font_file.read()
 
         raise FileNotFoundError("Could not find Apple Color Emoji font!")
-
-    def _extract_png(self, position):
-        index = position
-        # Calculate the chunk size, but getting the data size and adding
-        # the metadata size to it (20 for IHDR and 12 for other chunks).
-        # Uses struct.unpack to convert from bytes to unsigned int (>I).
-        chunk_size = struct.unpack(">I", self.font[index+8:index+12])[0] + 20
-        emoji = bytearray(self.font[index:index+chunk_size])
-        index += chunk_size
-
-        while True:
-            chunk_size = struct.unpack(">I", self.font[index:index+4])[0] + 12
-
-            # Check for the IEND (Final) block
-            if self.font[index+4:index+8] == b"IEND":
-                emoji.extend(self.font[index:index+chunk_size])
-                break
-            # For all blocks between IHDR and IEND
-            else:
-                emoji.extend(self.font[index:index+chunk_size])
-                index += chunk_size
-
-        return bytes(emoji)
 
     def extract_emoji(self, size):
         """Extracts emoji into ./emoji, only works for OSX"""
@@ -60,14 +45,20 @@ class EmojiExtractor(object):
 
         counter = 0
 
-        # Iterate through locations of all PNG headers in font file
-        for location in re.finditer(b'\x89PNG\r\n\x1a\n', self.font):
-            index = location.start()
-            if size == struct.unpack(">I", self.font[index+16:index+20])[0]:
+        # Iterate through locations of all PNG headers files, up to IEND id.
+        pattern = re.compile(b"\x89PNG\r\n\x1a\n.*?IEND", flags=re.DOTALL)
+        for item in re.finditer(pattern, self.font):
+            start = item.start()
+            end = item.end()
+            # Add the size of the IEND block, minus the size accounted for
+            end += struct.unpack(">I", self.font[end-8:end-4])[0] + 4
+
+            # Check for the correct horzontal size
+            if size == struct.unpack(">I", self.font[start+16:start+20])[0]:
                 file_path = os.path.join("emoji", "{}.png".format(counter))
                 counter += 1
                 with open(file_path, "wb") as out_file:
-                    out_file.write(self._extract_png(location.start()))
+                    out_file.write(self.font[start:end])
 
 
 class Emoji(object):
@@ -141,7 +132,7 @@ class Picture(object):
         image.thumbnail((max_size, max_size), resample=filter_algorithm)
         return image
 
-    def paste_emoji(self, pos, emoji):
+    def paste_emoji(self, pos, emoji, emoji_size):
         self.canvas.paste(emoji.get_emoji(),
                           box=(pos[0] * emoji_size, pos[1] * emoji_size))
 
@@ -156,7 +147,8 @@ class Picture(object):
         except ValueError:
             self.canvas.save(location, format=image_format)
 
-if __name__ == "__main__":
+
+def main():
     # Arguments collection and processing
     args = argparse.ArgumentParser()
 
@@ -232,7 +224,7 @@ if __name__ == "__main__":
             except KeyError:
                 out_emoji = min(emoji, key=lambda x: x.get_distance(colour))
                 previous_colours[colour] = out_emoji
-            image.paste_emoji((x, y), out_emoji)
+            image.paste_emoji((x, y), out_emoji, emoji_size)
 
     output_path = args.output
 
@@ -248,3 +240,6 @@ if __name__ == "__main__":
     print("Saving image to \"{}\"...".format(output_path))
     image.save_canvas(output_path)
     print("Done")
+
+if __name__ == "__main__":
+    main()
