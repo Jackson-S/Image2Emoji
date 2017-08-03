@@ -1,4 +1,4 @@
-""" Image to emoji converter - Jackson Sommerich 2017
+""" Image to emoji converter - Jackson Sommerich, 2017
 """
 
 import os
@@ -10,7 +10,6 @@ import itertools
 
 from PIL import Image
 from tqdm import tqdm
-
 
 class EmojiExtractor(object):
     """Finds PNG images in Apple Color Emoji.tt(c|f) and extracts them"""
@@ -87,16 +86,12 @@ class Emoji(object):
     def _set_colour(self, image_path):
         image = Image.open(image_path)
         background = Image.new("RGBA", image.size, (255, 255, 255, 255))
-        background.paste(image, mask=image.convert('RGBA').split()[-1])
+        background.paste(image, mask=image.convert("RGBA").split()[-1])
         try:
-            filter_algorithm = Image.LANCZOS
+            background = background.resize((1, 1), resample=Image.LANCZOS)
         except AttributeError:
-            filter_algorithm = Image.BICUBIC
-        background = background.resize((1, 1), resample=filter_algorithm)
-        colour = background.getpixel((0, 0))
-        background.close()
-        image.close()
-        return colour
+            background = background.resize((1, 1), resample=Image.BICUBIC)
+        return background.getpixel((0, 0))
 
     def get_distance(self, pixel):
         return (abs(self.colour[0] - pixel[0]) +
@@ -146,7 +141,6 @@ class Picture(object):
             self.canvas.save(location)
         except ValueError:
             self.canvas.save(location, format=image_format)
-
 
 def main():
     # Arguments collection and processing
